@@ -87,10 +87,17 @@ function analyzeQueryIndexes(queryString: string): IndexDefinition[] {
   const inequalityFilters = validWhereClauses.filter(clause => isInequalityOperator(clause.operator));
 
   // Check for inequality limitations
-  if (inequalityFilters.length > 1) {
-    throw new Error(`Cannot have inequality filters on different fields: ${
-      inequalityFilters.map(f => f.fieldPath).join(' and ')
-    }`);
+  if (inequalityFilters.length > 0) {
+    const firstInequalityField = inequalityFilters[0].fieldPath;
+    const differentFieldInequality = inequalityFilters.find(
+      filter => filter.fieldPath !== firstInequalityField
+    );
+
+    if (differentFieldInequality) {
+      throw new Error(`Cannot have inequality filters on different fields: ${
+        firstInequalityField} and ${differentFieldInequality.fieldPath
+      }`);
+    }
   }
 
   // Build the compound index fields array
