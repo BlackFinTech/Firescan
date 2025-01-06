@@ -43,7 +43,23 @@ describe('analyzeQueryIndexes', () => {
   });
 
   describe('compound indexes with orderBy', () => {
-    it('should create compound index for where + orderBy on different fields', () => {
+    it('should create compound index for equality where + orderBy on different fields', () => {
+      const query = `db.collection('users')
+        .where('age', '==', 21)
+        .orderBy('name', 'asc')`;
+      
+      const expected: IndexDefinition[] = [{
+        fields: [
+          { fieldPath: 'age', order: 'ASCENDING' },
+          { fieldPath: 'name', order: 'ASCENDING' }
+        ]
+      }];
+
+      const result = analyzeQueryIndexes(query);
+      expect(result).toEqual(expected);
+    });
+
+    it('should create compound index for inequality where + orderBy, automatically including inequality field orderBy', () => {
       const query = `db.collection('users')
         .where('age', '>=', 21)
         .orderBy('name', 'asc')`;
@@ -113,14 +129,18 @@ describe('analyzeQueryIndexes', () => {
       );
     });
 
-    it('should throw error when first orderBy does not match inequality filter', () => {
+    it('should automatically handle orderBy requirements for inequality filters', () => {
       const query = `db.collection('users')
         .where('age', '>=', 21)
         .orderBy('name', 'asc')`;
       
-      expect(() => analyzeQueryIndexes(query)).toThrow(
-        'First orderBy must be on the inequality filter field: age'
-      );
+      const result = analyzeQueryIndexes(query);
+      expect(result).toEqual([{
+        fields: [
+          { fieldPath: 'age', order: 'ASCENDING' },
+          { fieldPath: 'name', order: 'ASCENDING' }
+        ]
+      }]);
     });
   });
 

@@ -95,8 +95,12 @@ function analyzeQueryIndexes(queryString: string): IndexDefinition[] {
   // If we have both where and orderBy clauses, we need compound indexes
   if (whereClauses.length > 0 && orderByClauses.length > 0) {
     // If we have an inequality, it must be the first orderBy
-    if (hasInequality && inequalityField && orderByClauses[0] !== inequalityField) {
-      throw new Error(`First orderBy must be on the inequality filter field: ${inequalityField}`);
+    if (hasInequality && inequalityField) {
+      const firstOrderBy = orderByClauses[0];
+      if (!firstOrderBy || firstOrderBy !== inequalityField) {
+        // Add the required orderBy for the inequality field
+        orderByClauses.unshift(inequalityField);
+      }
     }
 
     // Create compound indexes for all combinations
