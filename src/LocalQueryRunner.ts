@@ -1,0 +1,1 @@
+// run firestore queries on data locally

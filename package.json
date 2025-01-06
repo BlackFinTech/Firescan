@@ -1,0 +1,32 @@
+{
+  "name": "firescan",
+  "description": "Firestore querying super powers, including full text search",
+  "public": true,
+  "version": "0.0.1",
+  "main": "index.js",
+  "author": "Janez Gec",
+  "readme": "README.md",
+  "scripts": {
+    "build": "tsup",
+    "test": "jest"
+  },
+  "keywords": [
+    "firestore",
+    "fulltext search",
+    "search engine",
+    "querying",
+    "firestore query"
+  ],
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2"
+  },
+  "bin": {
+    "generate-compound-indexes": "./src/scripts/generate-compound-indexes.ts"
+  }
+}
