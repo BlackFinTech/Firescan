@@ -48,7 +48,7 @@ To get the total count of indexes required for those compound fields.
 ## Roadmap
 
 - [x] firestore index generator utility
-- [ ] queries with indexes present on firestore
+- [x] queries with indexes present on firestore
 - [ ] queries with indexes not present on firestore
 - [ ] queries with indexes partially present on firestore
 - [ ] full text search
