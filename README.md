@@ -9,7 +9,7 @@ Goal of the library is to not feel constrained when querying and get the job don
 To install Firescan, use npm:
 
 ```sh
-npm install firescan
+npm install https://github.com/BlackFinTech/Firescan
 ```
 
 ## Usage
