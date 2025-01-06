@@ -10,93 +10,72 @@ interface IndexDefinition {
   fields: IndexField[];
 }
 
-// Types for parsed query components
-interface WhereClause {
-  fieldPath: string;
-  operator: string;
+// Firestore internal types
+interface FieldPath {
+  segments: string[];
+  formattedName: string;
 }
 
-// Constants
-const INEQUALITY_OPERATORS = [
-  '<',
-  '<=',
-  '>',
-  '>=',
-  '!=',
-  'not-in',
-  'array-contains-any',
-  'in'
-] as const;
+interface FieldFilterInternal {
+  field: FieldPath;
+  op: string;
+  value: unknown;
+}
 
-type InequalityOperator = typeof INEQUALITY_OPERATORS[number];
+interface FieldOrderInternal {
+  field: FieldPath;
+  direction: string;
+}
+
+interface QueryOptions {
+  filters: FieldFilterInternal[];
+  fieldOrders: FieldOrderInternal[];
+}
+
+// Map of Firestore internal operator names to our comparison operators
+const INEQUALITY_OPERATORS = new Set([
+  'LESS_THAN',
+  'LESS_THAN_OR_EQUAL',
+  'GREATER_THAN',
+  'GREATER_THAN_OR_EQUAL',
+  'NOT_EQUAL',
+  'NOT_IN',
+  'ARRAY_CONTAINS_ANY',
+  'IN'
+]);
 
 // Helper function to determine if a field/operator combination is an inequality
 const isInequalityOperator = (operator: string): boolean => {
-  return INEQUALITY_OPERATORS.includes(operator as InequalityOperator);
+  return INEQUALITY_OPERATORS.has(operator);
 };
 
-// Helper function to extract field path and operator from a where clause
-const parseWhereClause = (whereClause: string): WhereClause | null => {
-  const match = whereClause.match(/where\(['"](.*?)['"],\s*['"](.*?)['"],.*?\)/);
-  if (!match) return null;
+function analyzeQueryIndexes(query: any): IndexDefinition[] {
+  // Extract query options from the Firestore query object
+  const queryOptions: QueryOptions = query._queryOptions;
+  if (!queryOptions) return [];
+
+  const { filters, fieldOrders } = queryOptions;
   
-  return {
-    fieldPath: match[1],
-    operator: match[2]
-  };
-};
-
-// Helper function to extract field path from orderBy clause
-const parseOrderByClause = (orderByClause: string): string | null => {
-  const match = orderByClause.match(/orderBy\(['"](.*?)['"].*?\)/);
-  if (!match) return null;
-  
-  return match[1];
-};
-
-function analyzeQueryIndexes(queryString: string): IndexDefinition[] {
-  // Split the query into individual method calls
-  const methodCalls: string[] = queryString
-    .split('.')
-    .slice(2) // Skip db.collection part
-    .map(call => call.trim());
-
-  const whereClauses: (WhereClause | null)[] = [];
-  const orderByClauses: (string | null)[] = [];
-
-  // First pass: collect all where and orderBy clauses
-  methodCalls.forEach(call => {
-    if (call.startsWith('where')) {
-      whereClauses.push(parseWhereClause(call));
-    } else if (call.startsWith('orderBy')) {
-      orderByClauses.push(parseOrderByClause(call));
-    }
-  });
-
-  // Filter out null values
-  const validWhereClauses = whereClauses.filter((clause): clause is WhereClause => clause !== null);
-  const validOrderByClauses = orderByClauses.filter((clause): clause is string => clause !== null);
-
-  // If we don't have any where clauses or only have one, no compound index needed
-  if (validWhereClauses.length <= 1 && validOrderByClauses.length === 0) {
+  // If we don't have any filters or only have one filter with no orders, no compound index needed
+  if (filters.length <= 1 && fieldOrders.length === 0) {
     return [];
   }
 
   // Separate equality and inequality filters
-  const equalityFilters = validWhereClauses.filter(clause => !isInequalityOperator(clause.operator));
-  const inequalityFilters = validWhereClauses.filter(clause => isInequalityOperator(clause.operator));
+  const equalityFilters = filters.filter(filter => !isInequalityOperator(filter.op));
+  const inequalityFilters = filters.filter(filter => isInequalityOperator(filter.op));
 
   // Check for inequality limitations
   if (inequalityFilters.length > 0) {
-    const firstInequalityField = inequalityFilters[0].fieldPath;
+    const firstInequalityField = inequalityFilters[0].field.formattedName;
     const differentFieldInequality = inequalityFilters.find(
-      filter => filter.fieldPath !== firstInequalityField
+      filter => filter.field.formattedName !== firstInequalityField
     );
 
     if (differentFieldInequality) {
-      throw new Error(`Cannot have inequality filters on different fields: ${
-        firstInequalityField} and ${differentFieldInequality.fieldPath
-      }`);
+      throw new Error(
+        `Cannot have inequality filters on different fields: ${firstInequalityField} and ${differentFieldInequality.field.formattedName}`
+      );
     }
   }
 
@@ -104,32 +83,33 @@ function analyzeQueryIndexes(queryString: string): IndexDefinition[] {
   let indexFields: IndexField[] = [];
 
   // 1. Start with equality filters
-  equalityFilters.forEach(clause => {
+  equalityFilters.forEach(filter => {
     indexFields.push({
-      fieldPath: clause.fieldPath,
+      fieldPath: filter.field.formattedName,
       order: 'ASCENDING'
     });
   });
 
   // 2. Add inequality filter field if it exists
-  if (inequalityFilters.length === 1) {
-    const inequalityField = inequalityFilters[0];
+  if (inequalityFilters.length > 0) {
+    const inequalityField = inequalityFilters[0].field.formattedName;
     
     // Ensure the inequality field is not already added from equality filters
-    if (!indexFields.some(field => field.fieldPath === inequalityField.fieldPath)) {
+    if (!indexFields.some(field => field.fieldPath === inequalityField)) {
       indexFields.push({
-        fieldPath: inequalityField.fieldPath,
+        fieldPath: inequalityField,
         order: 'ASCENDING'
       });
     }
   }
 
   // 3. Add any remaining orderBy fields that aren't already included
-  validOrderByClauses.forEach(orderByField => {
-    if (!indexFields.some(field => field.fieldPath === orderByField)) {
+  fieldOrders.forEach(order => {
+    const orderFieldPath = order.field.formattedName;
+    if (!indexFields.some(field => field.fieldPath === orderFieldPath)) {
       indexFields.push({
-        fieldPath: orderByField,
-        order: 'ASCENDING'
+        fieldPath: orderFieldPath,
+        order: order.direction === 'DESCENDING' ? 'DESCENDING' : 'ASCENDING'
       });
     }
   });

@@ -1,14 +1,15 @@
-import { Query } from 'firebase-admin/firestore';
+import { QueryOptions } from '@google-cloud/firestore/build/src/reference/query-options.ts';
 import { analyzeQueryIndexes } from './SmartQuery/QueryAnalyzer';
+
 // when deciding how to run a query, use information from here: https://firebase.google.com/docs/firestore/query-data/queries
 
-function getRequiredIndexes(query: Query) {
 
-}
 
 export async function firescan(indexes, query: Query, keywords: string, options) {
   // get required indexes from query
   const requiredIndexes = analyzeQueryIndexes(query);
+  // compare required indexes with available indexes
+
 
   if(keywords) {
     throw new Error('Full text search is not supported yet');

@@ -1,15 +1,19 @@
+require('./../init')
+const admin = require("firebase-admin");
+const db = admin.firestore();
+
 import { analyzeQueryIndexes, IndexDefinition } from './../../src/SmartQuery/QueryAnalyzer';
 
 describe('analyzeQueryIndexes', () => {
   describe('basic queries', () => {
     it('should return empty array for simple queries without compound indexes', () => {
-      const query = `db.collection('users').where('name', '==', 'John')`;
+      const query = db.collection('users').where('name', '==', 'John');
       const result = analyzeQueryIndexes(query);
       expect(result).toEqual([]);
     });
 
     it('should return empty array for single orderBy', () => {
-      const query = `db.collection('users').orderBy('name', 'asc')`;
+      const query = db.collection('users').orderBy('name', 'asc');
       const result = analyzeQueryIndexes(query);
       expect(result).toEqual([]);
     });
@@ -17,9 +21,9 @@ describe('analyzeQueryIndexes', () => {
 
   describe('compound indexes with where clauses', () => {
     it('should create compound index for multiple where clauses on different fields', () => {
-      const query = `db.collection('users')
+      const query = db.collection('users')
         .where('age', '>=', 21)
-        .where('city', '==', 'NYC')`;
+        .where('city', '==', 'NYC');
       
       const expected: IndexDefinition[] = [{
         fields: [
@@ -33,9 +37,9 @@ describe('analyzeQueryIndexes', () => {
     });
 
     it('should not create compound index for multiple where clauses on same field', () => {
-      const query = `db.collection('users')
+      const query = db.collection('users')
         .where('age', '>=', 21)
-        .where('age', '<=', 65)`;
+        .where('age', '<=', 65);
       
       const result = analyzeQueryIndexes(query);
       expect(result).toEqual([]);
@@ -44,9 +48,9 @@ describe('analyzeQueryIndexes', () => {
 
   describe('compound indexes with orderBy', () => {
     it('should create compound index for equality where + orderBy on different fields', () => {
-      const query = `db.collection('users')
+      const query = db.collection('users')
         .where('age', '==', 21)
-        .orderBy('name', 'asc')`;
+        .orderBy('name', 'asc');
       
       const expected: IndexDefinition[] = [{
         fields: [
@@ -60,9 +64,9 @@ describe('analyzeQueryIndexes', () => {
     });
 
     it('should create compound index for inequality where + orderBy, automatically including inequality field orderBy', () => {
-      const query = `db.collection('users')
+      const query = db.collection('users')
         .where('age', '>=', 21)
-        .orderBy('name', 'asc')`;
+        .orderBy('name', 'asc');
       
       const expected: IndexDefinition[] = [{
         fields: [
@@ -76,9 +80,9 @@ describe('analyzeQueryIndexes', () => {
     });
 
     it('should not create compound index for where + orderBy on same field', () => {
-      const query = `db.collection('users')
+      const query = db.collection('users')
         .where('age', '>=', 21)
-        .orderBy('age', 'asc')`;
+        .orderBy('age', 'asc');
       
       const result = analyzeQueryIndexes(query);
       expect(result).toEqual([]);
@@ -87,10 +91,10 @@ describe('analyzeQueryIndexes', () => {
 
   describe('complex queries', () => {
     it('should create a single compound index for complex queries', () => {
-      const query = `db.collection('users')
+      const query = db.collection('users')
         .where('age', '>=', 21)
         .where('city', '==', 'NYC')
-        .orderBy('lastName', 'asc')`;
+        .orderBy('lastName', 'asc');
       
       const expected: IndexDefinition[] = [
         {
@@ -109,9 +113,9 @@ describe('analyzeQueryIndexes', () => {
 
   describe('error cases', () => {
     it('should throw error for inequality filters on different fields', () => {
-      const query = `db.collection('users')
+      const query = db.collection('users')
         .where('age', '>=', 21)
-        .where('score', '>', 90)`;
+        .where('score', '>', 90);
       
       expect(() => analyzeQueryIndexes(query)).toThrow(
         'Cannot have inequality filters on different fields: age and score'
@@ -119,9 +123,9 @@ describe('analyzeQueryIndexes', () => {
     });
 
     it('should automatically handle orderBy requirements for inequality filters', () => {
-      const query = `db.collection('users')
+      const query = db.collection('users')
         .where('age', '>=', 21)
-        .orderBy('name', 'asc')`;
+        .orderBy('name', 'asc');
       
       const result = analyzeQueryIndexes(query);
       expect(result).toEqual([{
@@ -140,22 +144,16 @@ describe('analyzeQueryIndexes', () => {
     });
 
     it('should handle malformed where clauses', () => {
-      const query = `db.collection('users').where('age' >= 21)`;  // Missing comma
+      const query = db.collection('users').where('age', '>=', 21);  // Missing comma
       expect(() => analyzeQueryIndexes(query)).not.toThrow();
     });
 
     it('should handle malformed orderBy clauses', () => {
-      const query = `db.collection('users').orderBy('name' asc)`;  // Missing comma
+      const query = db.collection('users').orderBy('name', 'asc');  // Missing comma
       expect(() => analyzeQueryIndexes(query)).not.toThrow();
     });
 
     it('should handle queries with whitespace and newlines', () => {
-      const query = `
-        db.collection('users')
-          .where('age', '>=', 21)
-          .where('city', '==', 'NYC')
-      `;
-      
       const expected: IndexDefinition[] = [{
         fields: [
           { fieldPath: 'city', order: 'ASCENDING' },
@@ -163,19 +161,21 @@ describe('analyzeQueryIndexes', () => {
         ]
       }];
 
-      const result = analyzeQueryIndexes(query);
+      const result = analyzeQueryIndexes(db.collection('users')
+      .where('age', '>=', 21)
+      .where('city', '==', 'NYC'));
       expect(result).toEqual(expected);
     });
   });
 
   describe('inequality operators', () => {
-    const inequalityOperators = ['<', '<=', '>', '>=', '!=', 'not-in', 'array-contains-any', 'in'];
+    const inequalityOperators = ['<', '<=', '>', '>=', '!=', 'in', 'not-in', 'array-contains-any', 'array-contains'];
     
     inequalityOperators.forEach(operator => {
       it(`should handle ${operator} operator correctly`, () => {
-        const query = `db.collection('users')
-          .where('age', '${operator}', 21)
-          .orderBy('age', 'asc')`;
+        const query = db.collection('users')
+          .where('age', `${operator}`, 21)
+          .orderBy('age', 'asc');
         
         expect(() => analyzeQueryIndexes(query)).not.toThrow();
       });
