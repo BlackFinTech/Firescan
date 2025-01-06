@@ -6,7 +6,7 @@ interface IndexField {
   order: OrderDirection;
 }
 
-export interface IndexDefinition {
+interface IndexDefinition {
   fields: IndexField[];
 }
 
