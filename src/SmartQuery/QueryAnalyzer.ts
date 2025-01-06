@@ -30,8 +30,8 @@ const INEQUALITY_OPERATORS = [
 
 type InequalityOperator = typeof INEQUALITY_OPERATORS[number];
 
-// Helper function to determine if a field/operator combination requires an index
-const requiresIndex = (fieldPath: string, operator: string): boolean => {
+// Helper function to determine if a field/operator combination is an inequality
+const isInequalityOperator = (operator: string): boolean => {
   return INEQUALITY_OPERATORS.includes(operator as InequalityOperator);
 };
 
@@ -61,7 +61,6 @@ function analyzeQueryIndexes(queryString: string): IndexDefinition[] {
     .slice(2) // Skip db.collection part
     .map(call => call.trim());
 
-  const indexes: IndexDefinition[] = [];
   const whereClauses: (WhereClause | null)[] = [];
   const orderByClauses: (string | null)[] = [];
 
@@ -74,71 +73,73 @@ function analyzeQueryIndexes(queryString: string): IndexDefinition[] {
     }
   });
 
-  // Analyze where clauses
-  let hasInequality = false;
-  let inequalityField: string | null = null;
+  // Filter out null values
+  const validWhereClauses = whereClauses.filter((clause): clause is WhereClause => clause !== null);
+  const validOrderByClauses = orderByClauses.filter((clause): clause is string => clause !== null);
 
-  whereClauses.forEach(clause => {
-    if (!clause) return;
+  // If we don't have any where clauses or only have one, no compound index needed
+  if (validWhereClauses.length <= 1 && validOrderByClauses.length === 0) {
+    return [];
+  }
+
+  // Separate equality and inequality filters
+  const equalityFilters = validWhereClauses.filter(clause => !isInequalityOperator(clause.operator));
+  const inequalityFilters = validWhereClauses.filter(clause => isInequalityOperator(clause.operator));
+
+  // Check for inequality limitations
+  if (inequalityFilters.length > 1) {
+    throw new Error(`Cannot have inequality filters on different fields: ${
+      inequalityFilters.map(f => f.fieldPath).join(' and ')
+    }`);
+  }
+
+  // Build the compound index fields array
+  let indexFields: IndexField[] = [];
+
+  // 1. Start with equality filters
+  equalityFilters.forEach(clause => {
+    indexFields.push({
+      fieldPath: clause.fieldPath,
+      order: 'ASCENDING'
+    });
+  });
+
+  // 2. Add inequality filter field if it exists
+  if (inequalityFilters.length === 1) {
+    const inequalityField = inequalityFilters[0];
     
-    if (requiresIndex(clause.fieldPath, clause.operator)) {
-      if (hasInequality && inequalityField && clause.fieldPath !== inequalityField) {
-        // Can't have inequality filters on different fields
-        throw new Error(`Cannot have inequality filters on different fields: ${inequalityField} and ${clause.fieldPath}`);
-      }
-      
-      hasInequality = true;
-      inequalityField = clause.fieldPath;
+    // Ensure the inequality field is not already added from equality filters
+    if (!indexFields.some(field => field.fieldPath === inequalityField.fieldPath)) {
+      indexFields.push({
+        fieldPath: inequalityField.fieldPath,
+        order: 'ASCENDING'
+      });
+    }
+  }
+
+  // 3. Add any remaining orderBy fields that aren't already included
+  validOrderByClauses.forEach(orderByField => {
+    if (!indexFields.some(field => field.fieldPath === orderByField)) {
+      indexFields.push({
+        fieldPath: orderByField,
+        order: 'ASCENDING'
+      });
     }
   });
 
-  // If we have both where and orderBy clauses, we need compound indexes
-  if (whereClauses.length > 0 && orderByClauses.length > 0) {
-    // If we have an inequality, it must be the first orderBy
-    if (hasInequality && inequalityField) {
-      const firstOrderBy = orderByClauses[0];
-      if (!firstOrderBy || firstOrderBy !== inequalityField) {
-        // Add the required orderBy for the inequality field
-        orderByClauses.unshift(inequalityField);
-      }
-    }
+  // Only create an index if we have multiple fields
+  if (indexFields.length > 1) {
+    // Remove any duplicate fields while maintaining order
+    indexFields = Array.from(new Map(
+      indexFields.map(field => [field.fieldPath, field])
+    ).values());
 
-    // Create compound indexes for all combinations
-    whereClauses.forEach(whereClause => {
-      if (!whereClause) return;
-      
-      orderByClauses.forEach(orderByField => {
-        if (!orderByField) return;
-        
-        if (whereClause.fieldPath !== orderByField) {
-          indexes.push({
-            fields: [
-              { fieldPath: whereClause.fieldPath, order: 'ASCENDING' },
-              { fieldPath: orderByField, order: 'ASCENDING' }
-            ]
-          });
-        }
-      });
-    });
+    return [{
+      fields: indexFields
+    }];
   }
 
-  // If we have multiple where clauses with different fields, we need compound indexes
-  if (whereClauses.length > 1) {
-    const fields = whereClauses
-      .filter((clause): clause is WhereClause => clause !== null)
-      .map(clause => clause.fieldPath);
-    
-    if (new Set(fields).size > 1) {
-      indexes.push({
-        fields: fields.map(field => ({
-          fieldPath: field,
-          order: 'ASCENDING'
-        }))
-      });
-    }
-  }
-
-  return indexes;
+  return [];
 }
 
 // Export for use in other modules

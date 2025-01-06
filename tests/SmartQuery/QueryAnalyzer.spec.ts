@@ -23,8 +23,8 @@ describe('analyzeQueryIndexes', () => {
       
       const expected: IndexDefinition[] = [{
         fields: [
-          { fieldPath: 'age', order: 'ASCENDING' },
-          { fieldPath: 'city', order: 'ASCENDING' }
+          { fieldPath: 'city', order: 'ASCENDING' },
+          { fieldPath: 'age', order: 'ASCENDING' }
         ]
       }];
 
@@ -86,7 +86,7 @@ describe('analyzeQueryIndexes', () => {
   });
 
   describe('complex queries', () => {
-    it('should create multiple compound indexes for complex queries', () => {
+    it('should create a single compound index for complex queries', () => {
       const query = `db.collection('users')
         .where('age', '>=', 21)
         .where('city', '==', 'NYC')
@@ -95,19 +95,8 @@ describe('analyzeQueryIndexes', () => {
       const expected: IndexDefinition[] = [
         {
           fields: [
-            { fieldPath: 'age', order: 'ASCENDING' },
-            { fieldPath: 'city', order: 'ASCENDING' }
-          ]
-        },
-        {
-          fields: [
-            { fieldPath: 'age', order: 'ASCENDING' },
-            { fieldPath: 'lastName', order: 'ASCENDING' }
-          ]
-        },
-        {
-          fields: [
             { fieldPath: 'city', order: 'ASCENDING' },
+            { fieldPath: 'age', order: 'ASCENDING' },
             { fieldPath: 'lastName', order: 'ASCENDING' }
           ]
         }
@@ -169,8 +158,8 @@ describe('analyzeQueryIndexes', () => {
       
       const expected: IndexDefinition[] = [{
         fields: [
-          { fieldPath: 'age', order: 'ASCENDING' },
-          { fieldPath: 'city', order: 'ASCENDING' }
+          { fieldPath: 'city', order: 'ASCENDING' },
+          { fieldPath: 'age', order: 'ASCENDING' }
         ]
       }];
 
