@@ -1,4 +1,4 @@
-import { generateCompoundIndexCombinations, FieldConfig } from '../src/CompoundIndexGenerator';
+import { generateCompoundIndexCombinations, FieldConfig } from '../../src/scripts/generate-compound-indexes';
 
 describe('generateCompoundIndexCombinations', () => {
 

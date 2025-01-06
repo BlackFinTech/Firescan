@@ -9,12 +9,12 @@ interface FieldCombination {
   fields: { fieldPath: string; order: 'ASCENDING' | 'DESCENDING' }[];
 }
 
-interface FieldConfig {
+export interface FieldConfig {
   fieldPath: string;
   order: 'ASCENDING' | 'DESCENDING';
 }
 
-export const generateIndexCombinations = (fields: (string | FieldConfig)[]): FieldCombination[] => {
+export function generateCompoundIndexCombinations(fields: (string | FieldConfig)[]): FieldCombination[] {
   // Validate input
   if (!Array.isArray(fields) || fields.length === 0) {
     throw new Error('Input must be a non-empty array of field names or field configs');
@@ -83,7 +83,7 @@ const parseArgs = (args: string[]): { collectionName: string, fields: FieldConfi
 
 const main = () => {
   const { collectionName, fields, countOnly } = parseArgs(process.argv.slice(2));
-  const combinations = generateIndexCombinations(fields);
+  const combinations = generateCompoundIndexCombinations(fields);
   if (countOnly) {
     console.log(combinations.length);
   } else {
