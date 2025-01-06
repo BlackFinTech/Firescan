@@ -95,5 +95,8 @@ const main = () => {
   }
 };
 
-main();
 
+// detect if run by CLI
+if (require.main === module) {
+  main();
+}
