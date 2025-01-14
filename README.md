@@ -49,5 +49,8 @@ To get the total count of indexes required for those compound fields.
 
 - [x] firestore index generator utility
 - [x] queries with indexes present on firestore
-- [ ] queries with indexes not present OR partially present on firestore
+- [x] queries with indexes not present OR partially present on firestore
+- [ ] testing queries with partial indexes
 - [ ] full text search
+- [ ] support for optimizing dbQuery on partial index queries so that you can specify which fields to filter by first
+- [ ] support for startAt and endAt on partial index queries
