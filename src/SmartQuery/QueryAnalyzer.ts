@@ -7,6 +7,8 @@ interface IndexField {
 }
 
 interface IndexDefinition {
+  collectionGroup: string;
+  queryScope: string;
   fields: IndexField[];
 }
 
@@ -28,6 +30,7 @@ interface FieldOrderInternal {
 }
 
 interface QueryOptions {
+  collectionId: string;
   filters: FieldFilterInternal[];
   fieldOrders: FieldOrderInternal[];
 }
@@ -54,7 +57,7 @@ function analyzeQueryIndexes(query: any): IndexDefinition[] {
   const queryOptions: QueryOptions = query._queryOptions;
   if (!queryOptions) return [];
 
-  const { filters, fieldOrders } = queryOptions;
+  const { filters, fieldOrders, collectionId } = queryOptions;
   
   // If we don't have any filters or only have one filter with no orders, no compound index needed
   if (filters.length <= 1 && fieldOrders.length === 0) {
@@ -122,6 +125,8 @@ function analyzeQueryIndexes(query: any): IndexDefinition[] {
     ).values());
 
     return [{
+      collectionGroup: collectionId,
+      queryScope: 'COLLECTION',
       fields: indexFields
     }];
   }

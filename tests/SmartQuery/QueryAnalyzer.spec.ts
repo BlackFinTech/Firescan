@@ -26,6 +26,8 @@ describe('analyzeQueryIndexes', () => {
         .where('city', '==', 'NYC');
       
       const expected: IndexDefinition[] = [{
+        collectionGroup: 'users',
+        queryScope: 'COLLECTION',
         fields: [
           { fieldPath: 'city', order: 'ASCENDING' },
           { fieldPath: 'age', order: 'ASCENDING' }
@@ -53,6 +55,8 @@ describe('analyzeQueryIndexes', () => {
         .orderBy('name', 'asc');
       
       const expected: IndexDefinition[] = [{
+        collectionGroup: 'users',
+        queryScope: 'COLLECTION',
         fields: [
           { fieldPath: 'age', order: 'ASCENDING' },
           { fieldPath: 'name', order: 'ASCENDING' }
@@ -69,6 +73,8 @@ describe('analyzeQueryIndexes', () => {
         .orderBy('name', 'asc');
       
       const expected: IndexDefinition[] = [{
+        collectionGroup: 'users',
+        queryScope: 'COLLECTION',
         fields: [
           { fieldPath: 'age', order: 'ASCENDING' },
           { fieldPath: 'name', order: 'ASCENDING' }
@@ -98,6 +104,8 @@ describe('analyzeQueryIndexes', () => {
       
       const expected: IndexDefinition[] = [
         {
+          collectionGroup: 'users',
+          queryScope: 'COLLECTION',
           fields: [
             { fieldPath: 'city', order: 'ASCENDING' },
             { fieldPath: 'age', order: 'ASCENDING' },
@@ -129,6 +137,8 @@ describe('analyzeQueryIndexes', () => {
       
       const result = analyzeQueryIndexes(query);
       expect(result).toEqual([{
+        collectionGroup: 'users',
+        queryScope: 'COLLECTION',
         fields: [
           { fieldPath: 'age', order: 'ASCENDING' },
           { fieldPath: 'name', order: 'ASCENDING' }
@@ -155,6 +165,8 @@ describe('analyzeQueryIndexes', () => {
 
     it('should handle queries with whitespace and newlines', () => {
       const expected: IndexDefinition[] = [{
+        collectionGroup: 'users',
+        queryScope: 'COLLECTION',
         fields: [
           { fieldPath: 'city', order: 'ASCENDING' },
           { fieldPath: 'age', order: 'ASCENDING' }
