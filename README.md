@@ -50,7 +50,7 @@ To get the total count of indexes required for those compound fields.
 - [x] firestore index generator utility
 - [x] queries with indexes present on firestore
 - [x] queries with indexes not present OR partially present on firestore
-- [ ] testing queries with partial indexes
+- [x] testing queries with partial indexes
 - [ ] full text search
 - [ ] improve partial querying when compound index supports filters but doesn't support orderby, in that case, the filters should run entirely on db and ordering, pagination on serverside
 - [ ] support for skipping query count check
