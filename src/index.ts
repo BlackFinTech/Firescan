@@ -6,6 +6,17 @@ interface QueryWithQueryOptions extends Query {
   _queryOptions: QueryOptions<any, any>;
 }
 
+const OP_CONST_TO_OP: { [key: string]: FirebaseFirestore.WhereFilterOp } = {
+  'EQUAL': '==',
+  'GREATER_THAN': '>',
+  'GREATER_THAN_OR_EQUAL': '>=',
+  'LESS_THAN': '<',
+  'LESS_THAN_OR_EQUAL': '<=',
+  'ARRAY_CONTAINS': 'array-contains',
+  'IN': 'in',
+  'ARRAY_CONTAINS_ANY': 'array-contains-any'
+}
+
 // when deciding how to run a query, use information from here: https://firebase.google.com/docs/firestore/query-data/queries
 
 function getPresentIndexes(indexes: IndexDefinition[], requiredIndexes: IndexDefinition[]) {
@@ -17,57 +28,68 @@ function splitQuery(query: QueryWithQueryOptions, presentIndexes: IndexDefinitio
   // split query into two parts: one that can be run on the database, and one that needs to be run on the client
   const colParent = query._queryOptions.parentPath.relativeName;
   const col = colParent? colParent + '/' + query._queryOptions.collectionId : query._queryOptions.collectionId;
-  const dbQuery = db.collection(col);
-  const offDbQuery = db.collection(col);
+  const dbCollection = db.collection(col);
+  const offDbCollection = db.collection(col);
+  let dbQuery : Query = dbCollection;
+  let offDbQuery : Query = offDbCollection;
 
   // find present compound index that supports the most filters (count) in query and apply those filters to dbQuery
   let maxCount = 0;
-  let maxIndex: IndexDefinition;
+  let maxIndex: IndexDefinition | null = null;
   presentIndexes.forEach(index => {
     const count = query._queryOptions.filters.filter((qf: any) => index.fields.some((field => field.fieldPath === qf.field.formattedName))).length;
-    if(count > maxCount) {
+    if(count === query._queryOptions.filters.length && count > maxCount) {
+      // best index has the most fields of query covered
       maxCount = count;
       maxIndex = index;
     }
   });
 
-  // apply filters from maxIndex to dbQuery
-  query._queryOptions.filters.forEach((qf: any) => {
-    if(maxIndex.fields.some(field => field.fieldPath === qf.field.formattedName)) {
-      dbQuery.where(qf.field.formattedName, qf.op, qf.value);
+  if(!maxIndex) {
+    // no compound indexes available, add all equality filters to dbQuery
+    const qfs: any[] = query._queryOptions.filters.filter((qf: any) => qf.op === 'EQUAL' || qf.op === 'IN' || qf.op === 'ARRAY_CONTAINS' || qf.op === 'ARRAY_CONTAINS_ANY');
+    for(const qf of qfs) {
+      dbQuery = dbQuery.where(qf.field.formattedName, OP_CONST_TO_OP[qf.op], qf.value);
     }
-  });
+  } else {
+    // compound available, apply filters from maxIndex to dbQuery
+    query._queryOptions.filters.forEach((qf: any) => {
+      if(maxIndex && maxIndex.fields.some(field => field.fieldPath === qf.field.formattedName)) {
+        dbQuery = dbQuery.where(qf.field.formattedName, OP_CONST_TO_OP[qf.op], qf.value);
+      }
+    });
+  }
 
   // add filters to offDb query that are not supported by indexes
   query._queryOptions.filters.forEach((qf: any) => {
-    if(!maxIndex.fields.some(field => field.fieldPath === qf.field.formattedName)) {
-      offDbQuery.where(qf.field.formattedName, qf.op, qf.value);
+    if(!maxIndex || !maxIndex.fields.some(field => field.fieldPath === qf.field.formattedName)) {
+      offDbQuery = offDbQuery.where(qf.field.formattedName, OP_CONST_TO_OP[qf.op], qf.value);
     }
   });
 
   // apply sorting to offDbQuery
   query._queryOptions.fieldOrders.forEach(order => {
-    offDbQuery.orderBy(order.field.formattedName, order.direction === 'ASCENDING' ? 'asc' : 'desc');
+    offDbQuery = offDbQuery.orderBy(order.field.formattedName, order.direction === 'ASCENDING' ? 'asc' : 'desc');
   });
 
   // apply startAt to offDbQuery
   if(query._queryOptions.startAt) {
-    offDbQuery.startAt(query._queryOptions.startAt);
+    offDbQuery = offDbQuery.startAt(query._queryOptions.startAt);
   }
 
   // apply endAt to offDbQuery
   if(query._queryOptions.endAt) {
-    offDbQuery.endAt(query._queryOptions.endAt);
+    offDbQuery = offDbQuery.endAt(query._queryOptions.endAt);
   }
 
   // apply offset to offDbQuery
   if(query._queryOptions.offset) {
-    offDbQuery.offset(query._queryOptions.offset);
+    offDbQuery = offDbQuery.offset(query._queryOptions.offset);
   }
 
   // apply limit to offDbQuery
   if(query._queryOptions.limit) {
-    offDbQuery.limit(query._queryOptions.limit);
+    offDbQuery = offDbQuery.limit(query._queryOptions.limit);
   }
 
   // return both queries
@@ -99,24 +121,24 @@ function applyFilters(query: QueryWithQueryOptions, docs: DocumentSnapshot[]) {
     const field = filter.field.formattedName;
     const value = filter.value;
     switch(filter.op) {
-      case '==':
+      case 'EQUAL':
         return doc.get(field) === value;
-      case '<':
+      case 'LESS_THAN':
         return doc.get(field) < value;
-      case '<=':
+      case 'LESS_THAN_OR_EQUAL':
         return doc.get(field) <= value;
-      case '>':
+      case 'GREATER_THAN':
         return doc.get(field) > value;
-      case '>=':
+      case 'GREATER_THAN_OR_EQUAL':
         return doc.get(field) >= value;
-      case 'array-contains':
+      case 'ARRAY_CONTAINS':
         return doc.get(field).includes(value);
-      case 'in':
+      case 'IN':
         return value.includes(doc.get(field));
-      case 'array-contains-any':
+      case 'ARRAY_CONTAINS_ANY':
         return doc.get(field).some((val: any) => value.includes(val));
       default:
-        return false;
+        throw new Error('Unsupported filter operator: ' + filter.op);
     }
   }));
 }
@@ -154,7 +176,9 @@ function applyPagination(query: QueryWithQueryOptions, docs: DocumentSnapshot[])
   return docs;
 }
 
-export async function firescan(indexes: IndexDefinition[], query: Query, keywords: string, options: FirescanOptions) {
+export async function firescan(indexes: IndexDefinition[], query: Query, keywords?: string, options?: FirescanOptions) {
+  options = options || { batchSizeServerSideProcessing: 1000, maxServerSideResults: 50000 };
+  
   // get required indexes from query
   const requiredIndexes = analyzeQueryIndexes(query);
   // compare required indexes with available indexes
@@ -184,7 +208,7 @@ export async function firescan(indexes: IndexDefinition[], query: Query, keyword
     // run in batches
     await batchQueryProcess(dbQuery, options.batchSizeServerSideProcessing, async (batchResult) => {
       // apply filters specified in offDbQuery
-      resultDocs = resultDocs.concat(applyFilters(offDbQuery as QueryWithQueryOptions, batchResult.docs));
+      resultDocs = resultDocs.concat(applyFilters(offDbQuery as QueryWithQueryOptions, batchResult));
     });
 
     // apply sorting
