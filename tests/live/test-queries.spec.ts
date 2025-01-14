@@ -47,5 +47,72 @@ describe('firescan on live (test) environment', () => {
       expect(users[1].get('name')).toBe('Tom');
       expect(users.length).toBe(2);
     });
+    it('queries users by city, age and sorts by name (serverside, because full required index is not present)', async () => {
+      const users = await firescan([
+        {
+          "collectionGroup": "users",
+          "queryScope": "COLLECTION",
+          "fields": [
+            {
+              "fieldPath": "city",
+              "order": "ASCENDING"
+            },
+            {
+              "fieldPath": "age",
+              "order": "ASCENDING"
+            }
+          ]
+        }
+      ], db.collection('users').where('city', '==', 'NYC').where('age','>',30).orderBy('name','asc'));
+      expect(users[0].get('name')).toBe('Alice');
+      expect(users[1].get('name')).toBe('Tom');
+      expect(users.length).toBe(2);
+    });
+    it('queries users by city and sorts by age (on db, because full required index is present)', async () => {
+      const users = await firescan([
+        {
+          "collectionGroup": "users",
+          "queryScope": "COLLECTION",
+          "fields": [
+            {
+              "fieldPath": "city",
+              "order": "ASCENDING"
+            },
+            {
+              "fieldPath": "age",
+              "order": "ASCENDING"
+            }
+          ]
+        }
+      ], db.collection('users').where('city', '==', 'NYC').orderBy('age','asc'));
+      expect(users[0].get('name')).toBe('Mike');
+      expect(users[1].get('name')).toBe('John');
+      expect(users[2].get('name')).toBe('Tom');
+      expect(users[3].get('name')).toBe('Alice');
+      expect(users.length).toBe(4);
+    });
+    it('queries users by city and sorts by age in DESCENDING order (on serverside, because required index is not present)', async () => {
+      const users = await firescan([
+        {
+          "collectionGroup": "users",
+          "queryScope": "COLLECTION",
+          "fields": [
+            {
+              "fieldPath": "city",
+              "order": "ASCENDING"
+            },
+            {
+              "fieldPath": "age",
+              "order": "ASCENDING"
+            }
+          ]
+        }
+      ], db.collection('users').where('city', '==', 'NYC').orderBy('age','desc'));
+      expect(users[0].get('name')).toBe('Alice');
+      expect(users[1].get('name')).toBe('Tom');
+      expect(users[2].get('name')).toBe('John');
+      expect(users[3].get('name')).toBe('Mike');
+      expect(users.length).toBe(4);
+    });
   });
 });

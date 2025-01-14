@@ -20,7 +20,18 @@ const OP_CONST_TO_OP: { [key: string]: FirebaseFirestore.WhereFilterOp } = {
 // when deciding how to run a query, use information from here: https://firebase.google.com/docs/firestore/query-data/queries
 
 function getPresentIndexes(indexes: IndexDefinition[], requiredIndexes: IndexDefinition[]) {
-  return requiredIndexes.filter(requiredIndex => indexes.some(index => index.fields.every(field => requiredIndex.fields.some(requiredField => requiredField.fieldPath === field.fieldPath && requiredField.order === field.order))));
+  let presentIndexes: IndexDefinition[] = [];
+  presentIndexes = requiredIndexes.filter(requiredIndex => {
+    const isSameIndexPresent = indexes.some(index => {
+      const everyFieldPresent = index.fields.length === requiredIndex.fields.length && index.fields.every(field => {
+        const isFieldPresentInRequiredIndex = requiredIndex.fields.some(requiredField => requiredField.fieldPath === field.fieldPath && requiredField.order === field.order);
+        return isFieldPresentInRequiredIndex;
+      })
+      return everyFieldPresent;
+    });
+    return isSameIndexPresent;
+  });
+  return presentIndexes;
 }
 
 function splitQuery(query: QueryWithQueryOptions, presentIndexes: IndexDefinition[]): { dbQuery: Query, offDbQuery: Query } {
