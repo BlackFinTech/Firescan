@@ -52,5 +52,7 @@ To get the total count of indexes required for those compound fields.
 - [x] queries with indexes not present OR partially present on firestore
 - [ ] testing queries with partial indexes
 - [ ] full text search
+- [ ] improve partial querying when compound index supports filters but doesn't support orderby, in that case, the filters should run entirely on db and ordering, pagination on serverside
+- [ ] support for skipping query count check
 - [ ] support for optimizing dbQuery on partial index queries so that you can specify which fields to filter by first
 - [ ] support for startAt and endAt on partial index queries
