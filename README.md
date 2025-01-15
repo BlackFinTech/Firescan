@@ -185,6 +185,7 @@ fullTextSearch();
 - [x] queries with indexes not present OR partially present on firestore
 - [x] testing queries with partial indexes
 - [x] full text search
+- [ ] able to apply updates from temporary updates collection on index load so an always up to date full text search would be possible
 - [ ] improve partial querying when compound index supports filters but doesn't support orderby, in that case, the filters should run entirely on db and ordering, pagination on serverside
 - [ ] support for skipping query count check
 - [ ] support for optimizing dbQuery on partial index queries so that you can specify which fields to filter by first
