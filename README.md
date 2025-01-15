@@ -5,16 +5,16 @@ Firescan is a powerful collection of workarounds for querying Firestore, includi
 Goal of the library is to not feel constrained when querying and get the job done with minimal moving parts. This is not an ElasticSearch or Algolia replacement. Best suited for smaller projects to get things going without having to deal with complex search solutions, reinvent the wheel or rely on third parties.
 
 It consists of three main parts:
-- Compound indexes generator script (handy tool for generating compound indexes config file out of different field combinations)
-- Smart firestore querying utility that uses indexes available and falls back to offline filtering
-- Full text search capability
+- **Compound Index Generator** - useful tool for generating compound index combinations out of different fields that require filtering/sorting
+- **Smart Firestore Queries** - uses available compound indexes and falls back to offline, serverside filtering on a best effort basis (max conditions on db, minimum on serverside)
+- **Full Text Search** - Powered by [FlexSearch](https://github.com/nextapps-de/flexsearch), it's just a wrapper that manages index files in GCP storage folder and queues updates in special internal firestore collection dedicated to firescan.
 
 ## Installation
 
 To install Firescan, use npm:
 
 ```sh
-npm install https://github.com/BlackFinTech/Firescan
+npm install firescan
 ```
 
 ## Compound indexes generator
@@ -31,15 +31,13 @@ npx firescan generate-compound-indexes COLLECTION_NAME FIELD1:ASC,FIELD2:DESC,FI
 
 Which will output JSON data ready for insertion into firestore.indexes.json file.
 
-If you are only interested in the number of indexes, you can run:
+If you are only interested in the number of index combinations, you can run:
 
 ```
 
 npx firescan generate-compound-indexes -c COLLECTION_NAME FIELD1:ASC,FIELD2:DESC,FIELD3:ASC
 
 ```
-
-To get the total count of indexes required for those compound fields.
 
 ## Smart Firestore Querying
 
