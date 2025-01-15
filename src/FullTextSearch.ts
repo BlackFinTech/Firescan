@@ -23,7 +23,8 @@ async function _fullTextIndexToJSON(index: FullTextIndex): Promise<string> {
     collection: index.collection,
     flexSearchIndexData: flexSearchIndexData,
     config: index.config,
-    buildTime: (new Date()).toISOString()
+    buildTime: (new Date()).toISOString(),
+    version: '0.0.1'
   });
   return indexDataString;
 }
