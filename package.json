@@ -19,6 +19,7 @@
   ],
   "license": "Apache-2.0",
   "devDependencies": {
+    "@faker-js/faker": "^9.3.0",
     "@types/jest": "^29.5.14",
     "firebase-admin": "^13.0.2",
     "jest": "^29.7.0",
@@ -29,5 +30,9 @@
   },
   "bin": {
     "generate-compound-indexes": "./src/scripts/generate-compound-indexes.ts"
+  },
+  "dependencies": {
+    "flexsearch": "^0.7.43",
+    "node-cache": "^5.1.2"
   }
 }
