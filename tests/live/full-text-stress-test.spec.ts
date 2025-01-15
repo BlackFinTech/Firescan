@@ -39,7 +39,8 @@ describe('full text on live (test) environment', () => {
   // describe('buildFullTextIndex', () => {
   //   it('builds full text index', async () => {
   //     index = await buildFullTextIndex(db, bucket, 'contacts', {
-  //       fields: ['name', 'city', 'email']
+  //       fields: ['name', 'city', 'email'],
+  //       tokenize: 'full'
   //     });
   //   }, 60000);
   // });
@@ -54,7 +55,8 @@ describe('full text on live (test) environment', () => {
   });
   describe('search', () => {
     it('searches the full text index', async () => {
-      const results = index.search('Anna');
+      const results = index.search('eier');
+      console.log(results);
       expect(results.length).toBeGreaterThan(0);
     });
   })

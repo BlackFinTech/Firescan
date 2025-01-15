@@ -6,6 +6,7 @@ import { batchQueryProcess, parallelExecution } from './util';
 export { IndexSearchResult } from 'flexsearch';
 export interface FullTextIndexConfig {
   fields: string[];
+  tokenize: 'full' | 'forward' | 'reverse' | 'strict';
 }
 export interface FullTextIndex {
   _flexSearchIndex: Index;
@@ -31,7 +32,9 @@ async function _fullTextIndexToJSON(index: FullTextIndex): Promise<string> {
 
 async function _fullTextIndexFromJSON(indexDataString: string): Promise<FullTextIndex> {
   const indexData = JSON.parse(indexDataString);
-  const index = new Index();
+  const index = new Index({
+    tokenize: indexData.config.tokenize || 'strict'
+  });
   for(let i = 0; i < indexData.flexSearchIndexData.length; i++) {
     index.import(indexData.flexSearchIndexData[i][0], indexData.flexSearchIndexData[i][1]);
   }
@@ -91,7 +94,9 @@ export async function loadFullTextIndex(bucketRef: Bucket, collection: string): 
 export async function buildFullTextIndex(dbRef: Firestore, bucketRef: Bucket, collection: string, config: FullTextIndexConfig): Promise<FullTextIndex> {
   // read all records from collection (in batches)
   const index: FullTextIndex = {
-    _flexSearchIndex: new Index(),
+    _flexSearchIndex: new Index({
+      tokenize: config.tokenize || 'strict'
+    }),
     collection,
     config,
     search: (query: string, options?: SearchOptions) => index._flexSearchIndex.search(query, options)
