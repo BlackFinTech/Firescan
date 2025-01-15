@@ -138,6 +138,8 @@ updateIndex();
 
 To update a single record in the full-text index, you can use the `updateFullTextIndexRecord` function. Note that this function doesn't affect the currently loaded index or even the built index, all it does is queue the update for later processing when `updateFullTextIndex` is called.
 
+When you would like a record in full text index deleted (i.e. document has been deleted), then specify `recordData` as `null`.
+
 Here is an example:
 
 ```ts
