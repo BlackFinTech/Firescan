@@ -1,62 +1,49 @@
 import { DocumentReference, Firestore, QueryDocumentSnapshot } from '@google-cloud/firestore';
 import { Bucket } from '@google-cloud/storage';
-import { Index } from 'flexsearch';
+import { Index, IndexSearchResult } from 'flexsearch';
+import { batchQueryProcess, parallelExecution } from './util';
 
-async function parallelExecution<T>(items: T[], limit: number, operations: (item: T) => Promise<void>): Promise<void> {
-  const BATCH_SIZE = limit;
-  const batched: T[][] = [];
-  let bi = 0;
-  // batch by BATCH_SIZE
-  for (let j = 0; j < items.length; j += BATCH_SIZE) {
-    batched.push(items.slice(j, j + BATCH_SIZE));
-  }
-  for (const batch of batched) {
-    console.log(new Date().toISOString(), BATCH_SIZE * bi, BATCH_SIZE * (bi + 1));
-    await Promise.all(batch.map(operations));
-    bi++;
-  }
+export interface FullTextIndexConfig {
+  fields: string[];
+}
+export interface FullTextIndex {
+  _flexSearchIndex: Index;
+  collection: string;
+  config: FullTextIndexConfig;
+  search: (query: string) => IndexSearchResult;
 }
 
-async function batchQueryProcess(
-  query: FirebaseFirestore.Query,
-  limit: number,
-  processor: (doc: FirebaseFirestore.QueryDocumentSnapshot) => Promise<void>,
-  options?: { logProgress?: boolean }
-): Promise<void> {
-  options = Object.assign(
-    {
-      logProgress: false,
-    },
-    options || {}
-  );
-  const { logProgress } = options;
+async function _fullTextIndexToJSON(index: FullTextIndex): Promise<string> {
+  const flexSearchIndexData: (string | number)[][] = [];
+  await index._flexSearchIndex.export((key, data) => {
+    flexSearchIndexData.push([key, data]);
+  });
+  const indexDataString = JSON.stringify({
+    collection: index.collection,
+    flexSearchIndexData: flexSearchIndexData,
+    config: index.config,
+    buildTime: (new Date()).toISOString()
+  });
+  return indexDataString;
+}
 
-  let total = -1;
-  if (logProgress) {
-    let countResult = await query.count().get();
-    total = countResult.data().count;
+async function _fullTextIndexFromJSON(indexDataString: string): Promise<FullTextIndex> {
+  const indexData = JSON.parse(indexDataString);
+  const index = new Index();
+  for(let i = 0; i < indexData.flexSearchIndexData.length; i++) {
+    index.import(indexData.flexSearchIndexData[i][0], indexData.flexSearchIndexData[i][1]);
   }
-
-  let result = await query.limit(limit).get();
-  let i = 0;
-  while (result.docs.length > 0) {
-    if (logProgress) {
-      console.debug(`${i}/${total} - ${Math.round((i / total) * 100)}%`);
-    }
-    i += limit;
-    await Promise.all(result.docs.map(processor));
-    let last = result.docs[result.docs.length - 1];
-    result = await query.limit(limit).startAfter(last).get();
-  }
+  return {
+    _flexSearchIndex: index,
+    collection: indexData.collection,
+    config: indexData.config,
+    search: (query: string) => index.search(query)
+  };
 }
 
 // create cron job that will updateFullTextIndex for each collection I need full text searching on
 // implement below, define how I will configure things, which fields to include for full text and also indexing
 const UPDATES_COLLECTION = 'firescan__full_text_updates';
-
-export interface FullTextIndexConfig {
-  fields: string[];
-}
 
 function _recordDataToSearchableString(recordData: any, config: FullTextIndexConfig): string {
   const searchableStringParts = [];
@@ -68,29 +55,20 @@ function _recordDataToSearchableString(recordData: any, config: FullTextIndexCon
   return searchableStringParts.join(' ');
 }
 
-async function _saveIndexToStorage(bucketRef: Bucket, index: Index, collection: string): Promise<void> {
+async function _saveIndexToStorage(bucketRef: Bucket, index: FullTextIndex, collection: string): Promise<void> {
   // save index to storage
-  const indexData: (string | number)[][] = [];
-  await index.export((key, data) => {
-    indexData.push([key, data]);
-  });
-  const indexDataString = JSON.stringify(indexData);
-
+  const indexDataString = await _fullTextIndexToJSON(index);
   await bucketRef.file(`firescan__full_text_indexes/${collection}.json`).save(indexDataString);
 }
 
 
-async function _loadIndexFromStorage(bucketRef: Bucket, collection: string): Promise<Index|null> {
+async function _loadIndexFromStorage(bucketRef: Bucket, collection: string): Promise<FullTextIndex|null> {
   // load index from storage
-  let index: null|Index = null;
+  let index: null|FullTextIndex = null;
   try {
     const indexJSONFileBuffer = await bucketRef.file(`firescan__full_text_indexes/${collection}.json`).download();
     if(indexJSONFileBuffer) {
-      index = new Index();
-      const indexData = JSON.parse(indexJSONFileBuffer.toString());
-      for(let i = 0; i < indexData.length; i++) {
-        index.import(indexData[i][0], indexData[i][1]);
-      }
+      index = await _fullTextIndexFromJSON(indexJSONFileBuffer.toString());
     }
   } catch(err) {
     index = null;
@@ -98,7 +76,7 @@ async function _loadIndexFromStorage(bucketRef: Bucket, collection: string): Pro
   return index;
 }
 
-export async function loadFullTextIndex(bucketRef: Bucket, collection: string): Promise<Index> {
+export async function loadFullTextIndex(bucketRef: Bucket, collection: string): Promise<FullTextIndex> {
   // load index from storage
   let index = await _loadIndexFromStorage(bucketRef, collection);
   if(!index) {
@@ -108,42 +86,47 @@ export async function loadFullTextIndex(bucketRef: Bucket, collection: string): 
   return index;
 }
 
-export async function buildFullTextIndex(dbRef: Firestore, bucketRef: Bucket, collection: string, config: FullTextIndexConfig): Promise<Index> {
+export async function buildFullTextIndex(dbRef: Firestore, bucketRef: Bucket, collection: string, config: FullTextIndexConfig): Promise<FullTextIndex> {
   // read all records from collection (in batches)
-  const index = new Index();
+  const index: FullTextIndex = {
+    _flexSearchIndex: new Index(),
+    collection,
+    config,
+    search: (query: string) => index._flexSearchIndex.search(query)
+  };
   await batchQueryProcess(dbRef.collection(collection), 100, async (doc) => {
-    index.add(doc.id, _recordDataToSearchableString(doc.data(), config));
+    index._flexSearchIndex.add(doc.id, _recordDataToSearchableString(doc.data(), config));
   });
   await _saveIndexToStorage(bucketRef, index, collection);
   return index;
 }
 
-async function _applyIndexUpdates(dbRef: Firestore, index: Index, recordCollection: string, config: FullTextIndexConfig): Promise<QueryDocumentSnapshot[]> {
+async function _applyIndexUpdates(dbRef: Firestore, index: FullTextIndex, recordCollection: string, config: FullTextIndexConfig): Promise<QueryDocumentSnapshot[]> {
   // fetch updates from collection and apply to index
   const updates = await dbRef.collection(UPDATES_COLLECTION).where('recordCollection', '==', recordCollection).get();
   for(let update of updates.docs) {
     const { recordId, recordData } = update.data();
     if(recordData === null) {
       // delete from index
-      index.remove(recordId);
+      index._flexSearchIndex.remove(recordId);
     } else {
       // update index
-      if(index.contain(recordId)) {
-        index.update(recordId, _recordDataToSearchableString(recordData, config));
+      if(index._flexSearchIndex.contain(recordId)) {
+        index._flexSearchIndex.update(recordId, _recordDataToSearchableString(recordData, config));
       } else {
-        index.add(recordId, _recordDataToSearchableString(recordData, config));
+        index._flexSearchIndex.add(recordId, _recordDataToSearchableString(recordData, config));
       }
     }
   }
   return updates.docs;
 }
 
-export async function updateFullTextIndex(dbRef: Firestore, bucketRef: Bucket, recordCollection: string, config: FullTextIndexConfig): Promise<Index> {
+export async function updateFullTextIndex(dbRef: Firestore, bucketRef: Bucket, recordCollection: string): Promise<FullTextIndex> {
   // load full text index
   const index = await loadFullTextIndex(bucketRef, recordCollection);
 
   // fetch updates from collection and apply to index
-  const updates = await _applyIndexUpdates(dbRef, index, recordCollection, config);
+  const updates = await _applyIndexUpdates(dbRef, index, recordCollection, index.config);
 
   // store index in storage
   await _saveIndexToStorage(bucketRef, index, recordCollection);

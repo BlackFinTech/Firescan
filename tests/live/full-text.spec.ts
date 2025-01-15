@@ -38,9 +38,7 @@ describe('full text on live (test) environment', () => {
   });
   describe('updateFullTextIndex', () => {
     it('builds full text index for a collection with data from record collection and patches with record data from updates collection', async () => {
-      index = await updateFullTextIndex(db, bucket, 'users', {
-        fields: ['name', 'city']
-      });
+      index = await updateFullTextIndex(db, bucket, 'users');
 
       expect(index.search('Michele')).toEqual(['EIv5LOLFuV4DKlycReQf']);
 
