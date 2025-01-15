@@ -1,6 +1,8 @@
 import { analyzeQueryIndexes, IndexDefinition } from './SmartQuery/QueryAnalyzer';
 import { Query, DocumentSnapshot } from '@google-cloud/firestore';
 import { QueryOptions } from '@google-cloud/firestore/build/src/reference/query-options';
+import { FullTextIndex, IndexSearchResult } from './FullTextSearch';
+import { parallelExecution } from './util';
 
 interface QueryWithQueryOptions extends Query {
   _queryOptions: QueryOptions<any, any>;
@@ -34,13 +36,16 @@ function getPresentIndexes(indexes: IndexDefinition[], requiredIndexes: IndexDef
   return presentIndexes;
 }
 
-function splitQuery(query: QueryWithQueryOptions, presentIndexes: IndexDefinition[]): { dbQuery: Query, offDbQuery: Query } {
-  const db = query.firestore;
-  // split query into two parts: one that can be run on the database, and one that needs to be run on the client
+function _queryToCollectionRef(query: QueryWithQueryOptions): FirebaseFirestore.CollectionReference {
   const colParent = query._queryOptions.parentPath.relativeName;
   const col = colParent? colParent + '/' + query._queryOptions.collectionId : query._queryOptions.collectionId;
-  const dbCollection = db.collection(col);
-  const offDbCollection = db.collection(col);
+  return query.firestore.collection(col);
+}
+
+function splitQuery(query: QueryWithQueryOptions, presentIndexes: IndexDefinition[]): { dbQuery: Query, offDbQuery: Query } {
+  // split query into two parts: one that can be run on the database, and one that needs to be run on the client
+  const dbCollection = _queryToCollectionRef(query);
+  const offDbCollection = _queryToCollectionRef(query);
   let dbQuery : Query = dbCollection;
   let offDbQuery : Query = offDbCollection;
 
@@ -107,6 +112,7 @@ function splitQuery(query: QueryWithQueryOptions, presentIndexes: IndexDefinitio
   return { dbQuery, offDbQuery };
 }
 
+
 async function batchQueryProcess(query: Query, limit: number, processor: (doc: any) => Promise<void>) {
   let result = await query.limit(limit).get();
   let i = 0;
@@ -119,6 +125,14 @@ async function batchQueryProcess(query: Query, limit: number, processor: (doc: a
 };
 
 interface FirescanOptions {
+  fullTextIndex?: null | FullTextIndex,
+  fullTextSuggest?: boolean;
+  batchSizeServerSideProcessing?: number;
+  maxServerSideResults?: number;
+}
+interface FirescanOptionsRequired {
+  fullTextIndex: null | FullTextIndex,
+  fullTextSuggest: boolean;
   batchSizeServerSideProcessing: number;
   maxServerSideResults: number;
 }
@@ -187,47 +201,88 @@ function applyPagination(query: QueryWithQueryOptions, docs: DocumentSnapshot[])
   return docs;
 }
 
-export async function firescan(indexes: IndexDefinition[], query: Query, keywords?: string, options?: FirescanOptions) {
-  options = options || { batchSizeServerSideProcessing: 1000, maxServerSideResults: 50000 };
+export async function firescan(indexes: IndexDefinition[], query: Query, keywords?: string, opt?: FirescanOptions) {
+  const options = Object.assign({ batchSizeServerSideProcessing: 1000, maxServerSideResults: 50000, fullTextIndex: null, fullTextSuggest: false }, opt) as FirescanOptionsRequired;
   
   // get required indexes from query
   const requiredIndexes = analyzeQueryIndexes(query);
   // compare required indexes with available indexes
   const presentIndexes = getPresentIndexes(indexes, requiredIndexes);
 
+  let keywordSearchResults: IndexSearchResult|null = null;
   if(keywords) {
-    throw new Error('Full text search is not supported yet');
-    // if keywords are provided, use full text search (doFullTextSearch) and get document ids to include in result set after filtering is applied
+    const { fullTextIndex } = options;
+    if(!fullTextIndex) {
+      throw new Error('Full text search index is required');
+    }
+    keywordSearchResults = fullTextIndex.search(keywords, { suggest: options.fullTextSuggest });
   }
 
   let resultDocs: DocumentSnapshot[] = [];
   if(presentIndexes.length === requiredIndexes.length) {
     // all required indexes are present
-    // run query
-    const result = await query.get();
-    resultDocs = result.docs;
+    if(keywordSearchResults) {
+      const dbQueryCountResult = await query.count().get();
+      const dbQueryDocCount = dbQueryCountResult.data().count;
+      if(keywordSearchResults.length < dbQueryDocCount && keywordSearchResults.length < options.maxServerSideResults) {
+        // instead of running db query, get all keyword search results one by one because there are fewer of them
+        const dbCol = _queryToCollectionRef(query as QueryWithQueryOptions);
+        await parallelExecution(keywordSearchResults, options.batchSizeServerSideProcessing, async (documentId) => {
+          const doc = await dbCol.doc(documentId as string).get();
+          if(doc.exists) {
+            resultDocs.push(doc);
+          }
+        });
+      } else {
+        // run db query
+        const result = await query.get();
+        resultDocs = result.docs;
+        // limit results to those matching full text search
+        resultDocs = resultDocs.filter(doc => keywordSearchResults.includes(doc.id));
+      }
+    } else {
+      const result = await query.get();
+      resultDocs = result.docs;
+      // apply full text search
+      if(keywordSearchResults) {
+        resultDocs = resultDocs.filter(doc => (keywordSearchResults as any).includes(doc.id));
+      }
+    }
   } else {
     // some or all indexes are missing, voodoo serverside processing required
     const { dbQuery, offDbQuery } = splitQuery(query as QueryWithQueryOptions, presentIndexes);
 
     const dbQueryCountResult = await dbQuery.count().get();
     const dbQueryDocCount = dbQueryCountResult.data().count;
-    if(dbQueryDocCount >= options.maxServerSideResults) {
+    if(keywordSearchResults && keywordSearchResults.length < dbQueryDocCount && keywordSearchResults.length < options.maxServerSideResults) {
+      // instead of running db query, get all keyword search results one by one because there are fewer of them
+      const dbCol = _queryToCollectionRef(query as QueryWithQueryOptions);
+      await parallelExecution(keywordSearchResults, options.batchSizeServerSideProcessing, async (documentId) => {
+        const doc = await dbCol.doc(documentId as string).get();
+        if(doc.exists) {
+          resultDocs.push(doc);
+        }
+      });
+    } else if(dbQueryDocCount < options.maxServerSideResults) {
+      // run in batches
+      await batchQueryProcess(dbQuery, options.batchSizeServerSideProcessing, async (batchResult) => {
+        // apply filters specified in offDbQuery
+        resultDocs = resultDocs.concat(applyFilters(offDbQuery as QueryWithQueryOptions, batchResult));
+      });
+    } else {
       throw new Error('Query exceeds server side result limit');
     }
 
-    // run in batches
-    await batchQueryProcess(dbQuery, options.batchSizeServerSideProcessing, async (batchResult) => {
-      // apply filters specified in offDbQuery
-      resultDocs = resultDocs.concat(applyFilters(offDbQuery as QueryWithQueryOptions, batchResult));
-    });
+    // apply full text search
+    if(keywordSearchResults) {
+      resultDocs = resultDocs.filter(doc => keywordSearchResults.includes(doc.id));
+    }
 
     // apply sorting
     resultDocs = applySorting(offDbQuery as QueryWithQueryOptions, resultDocs);
 
     // apply pagination
     resultDocs = applyPagination(offDbQuery as QueryWithQueryOptions, resultDocs);
-
   }
 
   return resultDocs;

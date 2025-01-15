@@ -1,8 +1,9 @@
 import { DocumentReference, Firestore, QueryDocumentSnapshot } from '@google-cloud/firestore';
 import { Bucket } from '@google-cloud/storage';
-import { Index, IndexSearchResult } from 'flexsearch';
+import { Index, IndexSearchResult, SearchOptions } from 'flexsearch';
 import { batchQueryProcess, parallelExecution } from './util';
 
+export { IndexSearchResult } from 'flexsearch';
 export interface FullTextIndexConfig {
   fields: string[];
 }
@@ -10,7 +11,7 @@ export interface FullTextIndex {
   _flexSearchIndex: Index;
   collection: string;
   config: FullTextIndexConfig;
-  search: (query: string) => IndexSearchResult;
+  search: (query: string, options?: SearchOptions ) => IndexSearchResult;
 }
 
 async function _fullTextIndexToJSON(index: FullTextIndex): Promise<string> {
@@ -37,7 +38,7 @@ async function _fullTextIndexFromJSON(indexDataString: string): Promise<FullText
     _flexSearchIndex: index,
     collection: indexData.collection,
     config: indexData.config,
-    search: (query: string) => index.search(query)
+    search: (query: string, options?: SearchOptions) => index.search(query, options)
   };
 }
 
@@ -92,7 +93,7 @@ export async function buildFullTextIndex(dbRef: Firestore, bucketRef: Bucket, co
     _flexSearchIndex: new Index(),
     collection,
     config,
-    search: (query: string) => index._flexSearchIndex.search(query)
+    search: (query: string, options?: SearchOptions) => index._flexSearchIndex.search(query, options)
   };
   await batchQueryProcess(dbRef.collection(collection), 100, async (doc) => {
     index._flexSearchIndex.add(doc.id, _recordDataToSearchableString(doc.data(), config));

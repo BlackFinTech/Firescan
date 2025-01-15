@@ -1,4 +1,5 @@
 require('./../init');
+import { buildFullTextIndex } from '../../src/FullTextSearch';
 import { firescan } from './../../src/index';
 
 import * as admin from "firebase-admin";
@@ -113,6 +114,12 @@ describe('firescan on live (test) environment', () => {
       expect(users[2].get('name')).toBe('John');
       expect(users[3].get('name')).toBe('Mike');
       expect(users.length).toBe(4);
+    });
+    it('performs full text search on users collection', async () => {
+      const index = await buildFullTextIndex(db, admin.storage().bucket('firescan-test.firebasestorage.app'), 'users', { fields: ['name', 'city'] });
+      const users = await firescan([], db.collection('users'), 'mike', { fullTextIndex: index });
+      expect(users.length).toBe(1);
+      expect(users[0].get('name')).toBe('Mike');
     });
   });
 });
