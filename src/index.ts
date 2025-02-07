@@ -299,3 +299,10 @@ export async function firescan(indexes: IndexDefinition[], query: Query, keyword
     totalCount: totalCount
   };
 }
+
+export {
+  updateFullTextIndexRecord,
+  updateFullTextIndex,
+  buildFullTextIndex,
+  loadFullTextIndex
+} from './FullTextSearch';
