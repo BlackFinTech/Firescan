@@ -3,12 +3,14 @@
   "description": "Firestore querying super powers, including full text search",
   "public": true,
   "version": "0.0.1",
-  "main": "index.js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "author": "Janez Gec",
   "readme": "README.md",
   "scripts": {
     "build": "tsup",
-    "test": "jest"
+    "test": "jest",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "firestore",
@@ -31,6 +33,10 @@
   "bin": {
     "generate-compound-indexes": "./src/scripts/generate-compound-indexes.ts"
   },
+  "files": [
+    "dist",
+    "README.md"
+  ],
   "dependencies": {
     "flexsearch": "^0.7.43",
     "node-cache": "^5.1.2"
