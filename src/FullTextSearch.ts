@@ -63,7 +63,7 @@ function _recordDataToSearchableString(recordData: any, config: FullTextIndexCon
 async function _saveIndexToStorage(bucketRef: Bucket, index: FullTextIndex, collection: string): Promise<void> {
   // save index to storage
   const indexDataString = await _fullTextIndexToJSON(index);
-  await bucketRef.file(`firescan__full_text_indexes/${collection}.json`).save(indexDataString);
+  await bucketRef.file(`firescan__full_text_indexes/${collection.split('/').join('__')}.json`).save(indexDataString);
 }
 
 
@@ -71,7 +71,7 @@ async function _loadIndexFromStorage(bucketRef: Bucket, collection: string): Pro
   // load index from storage
   let index: null|FullTextIndex = null;
   try {
-    const indexJSONFileBuffer = await bucketRef.file(`firescan__full_text_indexes/${collection}.json`).download();
+    const indexJSONFileBuffer = await bucketRef.file(`firescan__full_text_indexes/${collection.split('/').join('__')}.json`).download();
     if(indexJSONFileBuffer) {
       index = await _fullTextIndexFromJSON(indexJSONFileBuffer.toString());
     }
