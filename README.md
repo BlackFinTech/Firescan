@@ -51,7 +51,7 @@ const db = admin.firestore();
 
 async function queryUsers() {
   const users = await firescan([], db.collection('users').where('city', '==', 'NYC'));
-  console.log(users);
+  console.log(users.results);
 }
 
 queryUsers();
@@ -170,7 +170,7 @@ const bucket = admin.storage().bucket('your-bucket-name');
 async function fullTextSearch() {
   const index = await buildFullTextIndex(db, bucket, 'users', { fields: ['name', 'city'], tokenize: 'strict' });
   const users = await firescan([], db.collection('users'), 'John', { fullTextIndex: index });
-  console.log(users);
+  console.log(users.results);
 }
 
 fullTextSearch();

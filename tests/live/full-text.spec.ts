@@ -11,6 +11,7 @@ describe('full text on live (test) environment', () => {
   describe('buildFullTextIndex', () => {
     it('builds full text index for a collection with data from record collection', async () => {
       index = await buildFullTextIndex(db, bucket, 'users', {
+        tokenize: 'forward',
         fields: ['name', 'city']
       });
 

@@ -203,6 +203,7 @@ function applyPagination(query: QueryWithQueryOptions, docs: DocumentSnapshot[])
 
 export async function firescan(indexes: IndexDefinition[], query: Query, keywords?: string, opt?: FirescanOptions) {
   const options = Object.assign({ batchSizeServerSideProcessing: 1000, maxServerSideResults: 50000, fullTextIndex: null, fullTextSuggest: false }, opt) as FirescanOptionsRequired;
+  let totalCount = 0;
   
   // get required indexes from query
   const requiredIndexes = analyzeQueryIndexes(query);
@@ -220,13 +221,15 @@ export async function firescan(indexes: IndexDefinition[], query: Query, keyword
 
   let resultDocs: DocumentSnapshot[] = [];
   if(presentIndexes.length === requiredIndexes.length) {
+    
     // all required indexes are present
     if(keywordSearchResults) {
-      const dbQueryCountResult = await query.count().get();
+      const limitlessQuery = query.limit(0);
+      const dbQueryCountResult = await limitlessQuery.count().get();
       const dbQueryDocCount = dbQueryCountResult.data().count;
       if(keywordSearchResults.length < dbQueryDocCount && keywordSearchResults.length < options.maxServerSideResults) {
         // instead of running db query, get all keyword search results one by one because there are fewer of them
-        const dbCol = _queryToCollectionRef(query as QueryWithQueryOptions);
+        const dbCol = _queryToCollectionRef(limitlessQuery as QueryWithQueryOptions);
         await parallelExecution(keywordSearchResults, options.batchSizeServerSideProcessing, async (documentId) => {
           const doc = await dbCol.doc(documentId as string).get();
           if(doc.exists) {
@@ -235,18 +238,22 @@ export async function firescan(indexes: IndexDefinition[], query: Query, keyword
         });
       } else {
         // run db query
-        const result = await query.get();
+        const result = await limitlessQuery.get();
         resultDocs = result.docs;
         // limit results to those matching full text search
         resultDocs = resultDocs.filter(doc => keywordSearchResults.includes(doc.id));
       }
+      totalCount = resultDocs.length
+      // apply pagination
+      resultDocs = applyPagination(query as QueryWithQueryOptions, resultDocs);
     } else {
+      // get total count (remove limit from query)
+      const countQuery = query.limit(0).count();
+      const dbQueryCountResult = await countQuery.get();
+      totalCount = dbQueryCountResult.data().count;
+      // run db query
       const result = await query.get();
       resultDocs = result.docs;
-      // apply full text search
-      if(keywordSearchResults) {
-        resultDocs = resultDocs.filter(doc => (keywordSearchResults as any).includes(doc.id));
-      }
     }
   } else {
     // some or all indexes are missing, voodoo serverside processing required
@@ -281,9 +288,14 @@ export async function firescan(indexes: IndexDefinition[], query: Query, keyword
     // apply sorting
     resultDocs = applySorting(offDbQuery as QueryWithQueryOptions, resultDocs);
 
+    totalCount = resultDocs.length;
+
     // apply pagination
     resultDocs = applyPagination(offDbQuery as QueryWithQueryOptions, resultDocs);
   }
 
-  return resultDocs;
+  return {
+    results: resultDocs,
+    totalCount: totalCount
+  };
 }
