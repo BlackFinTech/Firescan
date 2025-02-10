@@ -61,11 +61,9 @@ export function generateCompoundIndexCombinations(fields: (string | FieldConfig)
 };
 
 const parseArgs = (args: string[]): { collectionName: string, fields: FieldConfig[], countOnly: boolean } => {
-  if (args.length < 3) {
+  if (args.length < 2) {
     throw new Error('Usage: generate-compound-indexes [-c] COLLECTION_NAME FIELD1:ORDER,FIELD2:ORDER,...');
   }
-
-  args.shift(); // Remove the script name
 
   const countOnly = args[0] === '-c';
   const collectionName = countOnly ? args[1] : args[0];

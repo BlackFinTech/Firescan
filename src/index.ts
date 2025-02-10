@@ -306,3 +306,7 @@ export {
   buildFullTextIndex,
   loadFullTextIndex
 } from './FullTextSearch';
+
+export {
+  IndexDefinition
+} from './SmartQuery/QueryAnalyzer';
