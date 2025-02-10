@@ -121,5 +121,11 @@ describe('firescan on live (test) environment', () => {
       expect(users.length).toBe(1);
       expect(users[0].get('name')).toBe('Mike');
     });
+    // nested collections
+    it('queries users actions', async () => {
+      const user = await db.collection('users').where('name', '==', 'John').get();
+      const { results: actions } = await firescan([], db.collection('users').doc(user.docs[0].id).collection('actions').where('label', '==', 'login'));
+      expect(actions.length).toBe(1);
+    });
   });
 });

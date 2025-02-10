@@ -12,6 +12,14 @@ async function createUser(name: string, age: number, city: string) {
   });
 }
 
+
+async function createUserAction(userId: string, label: string) {
+  await db.collection('users').doc(userId).collection('actions').add({
+    label: label,
+    timestamp: admin.firestore.FieldValue.serverTimestamp(),
+  });
+}
+
 async function generateSampleData() {
   const sampleUsers = [
     { name: 'John', age: 25, city: 'NYC' },
@@ -27,6 +35,14 @@ async function generateSampleData() {
   for (const user of sampleUsers) {
     await createUser(user.name, user.age, user.city);
   }
+
+  // get users
+  const users = await db.collection('users').get();
+  // loop through users and insert actions
+  users.forEach(async user => {
+    await createUserAction(user.id, 'login');
+    await createUserAction(user.id, 'logout');
+  });
 
   console.log('Sample data generated successfully!');
 }
