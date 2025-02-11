@@ -52,6 +52,15 @@ const isInequalityOperator = (operator: string): boolean => {
   return INEQUALITY_OPERATORS.has(operator);
 };
 
+export function isMultipleInequalityFilters(query: any): boolean {
+  const queryOptions: QueryOptions = query._queryOptions;
+  if (!queryOptions) return false;
+
+  const { filters } = queryOptions;
+  const inequalityFilters = filters.filter(filter => isInequalityOperator(filter.op));
+  return inequalityFilters.length > 1;
+}
+
 function analyzeQueryIndexes(query: any): IndexDefinition[] {
   // Extract query options from the Firestore query object
   const queryOptions: QueryOptions = query._queryOptions;
@@ -67,20 +76,6 @@ function analyzeQueryIndexes(query: any): IndexDefinition[] {
   // Separate equality and inequality filters
   const equalityFilters = filters.filter(filter => !isInequalityOperator(filter.op));
   const inequalityFilters = filters.filter(filter => isInequalityOperator(filter.op));
-
-  // Check for inequality limitations
-  if (inequalityFilters.length > 0) {
-    const firstInequalityField = inequalityFilters[0].field.formattedName;
-    const differentFieldInequality = inequalityFilters.find(
-      filter => filter.field.formattedName !== firstInequalityField
-    );
-
-    if (differentFieldInequality) {
-      throw new Error(
-        `Cannot have inequality filters on different fields: ${firstInequalityField} and ${differentFieldInequality.field.formattedName}`
-      );
-    }
-  }
 
   // Build the compound index fields array
   let indexFields: IndexField[] = [];

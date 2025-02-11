@@ -1,4 +1,4 @@
-import { analyzeQueryIndexes, IndexDefinition } from './SmartQuery/QueryAnalyzer';
+import { analyzeQueryIndexes, IndexDefinition, isMultipleInequalityFilters } from './SmartQuery/QueryAnalyzer';
 import { Query, DocumentSnapshot } from '@google-cloud/firestore';
 import { QueryOptions } from '@google-cloud/firestore/build/src/reference/query-options';
 import { FullTextIndex, IndexSearchResult } from './FullTextSearch';
@@ -42,6 +42,17 @@ function _queryToCollectionRef(query: QueryWithQueryOptions): FirebaseFirestore.
   return query.firestore.collection(col);
 }
 
+interface QueryFilterField {
+  formattedName: string;
+  fieldPath: string;
+}
+
+interface QueryFilter {
+  field: QueryFilterField;
+  op: string;
+  value: any;
+}
+
 function splitQuery(query: QueryWithQueryOptions, presentIndexes: IndexDefinition[]): { dbQuery: Query, offDbQuery: Query } {
   // split query into two parts: one that can be run on the database, and one that needs to be run on the client
   const dbCollection = _queryToCollectionRef(query);
@@ -49,12 +60,24 @@ function splitQuery(query: QueryWithQueryOptions, presentIndexes: IndexDefinitio
   let dbQuery : Query = dbCollection;
   let offDbQuery : Query = offDbCollection;
 
+  const allFilters = (query._queryOptions.filters as unknown) as QueryFilter[];
+  const qFilters: QueryFilter[] = [];
+  const unsupportedDBFilters: QueryFilter[] = [];
+  for(let filter of allFilters) {
+    // only a single IN filter can be done on database
+    if(filter.op === 'IN' && qFilters.find((f: any) => f.op === 'IN')) {
+      unsupportedDBFilters.push(filter);
+    } else {
+      qFilters.push(filter);
+    }
+  }
+
   // find present compound index that supports the most filters (count) in query and apply those filters to dbQuery
   let maxCount = 0;
   let maxIndex: IndexDefinition | null = null;
   presentIndexes.forEach(index => {
-    const count = query._queryOptions.filters.filter((qf: any) => index.fields.some((field => field.fieldPath === qf.field.formattedName))).length;
-    if(count === query._queryOptions.filters.length && count > maxCount) {
+    const count = qFilters.filter((qf: any) => index.fields.some((field => field.fieldPath === qf.field.formattedName))).length;
+    if(count === qFilters.length && count > maxCount) {
       // best index has the most fields of query covered
       maxCount = count;
       maxIndex = index;
@@ -63,13 +86,13 @@ function splitQuery(query: QueryWithQueryOptions, presentIndexes: IndexDefinitio
 
   if(!maxIndex) {
     // no compound indexes available, add all equality filters to dbQuery
-    const qfs: any[] = query._queryOptions.filters.filter((qf: any) => qf.op === 'EQUAL' || qf.op === 'IN' || qf.op === 'ARRAY_CONTAINS' || qf.op === 'ARRAY_CONTAINS_ANY');
+    const qfs: any[] = qFilters.filter((qf: any) => qf.op === 'EQUAL' || qf.op === 'IN' || qf.op === 'ARRAY_CONTAINS' || qf.op === 'ARRAY_CONTAINS_ANY');
     for(const qf of qfs) {
       dbQuery = dbQuery.where(qf.field.formattedName, OP_CONST_TO_OP[qf.op], qf.value);
     }
   } else {
     // compound available, apply filters from maxIndex to dbQuery
-    query._queryOptions.filters.forEach((qf: any) => {
+    qFilters.forEach((qf: any) => {
       if(maxIndex && maxIndex.fields.some(field => field.fieldPath === qf.field.formattedName)) {
         dbQuery = dbQuery.where(qf.field.formattedName, OP_CONST_TO_OP[qf.op], qf.value);
       }
@@ -77,10 +100,15 @@ function splitQuery(query: QueryWithQueryOptions, presentIndexes: IndexDefinitio
   }
 
   // add filters to offDb query that are not supported by indexes
-  query._queryOptions.filters.forEach((qf: any) => {
+  qFilters.forEach((qf: any) => {
     if(!maxIndex || !maxIndex.fields.some(field => field.fieldPath === qf.field.formattedName)) {
       offDbQuery = offDbQuery.where(qf.field.formattedName, OP_CONST_TO_OP[qf.op], qf.value);
     }
+  });
+
+  // add filters to offDb that are unsupported by database
+  unsupportedDBFilters.forEach((qf) => {
+    offDbQuery = offDbQuery.where(qf.field.formattedName, OP_CONST_TO_OP[qf.op], qf.value);
   });
 
   // apply sorting to offDbQuery
@@ -205,6 +233,7 @@ export async function firescan(indexes: IndexDefinition[], query: Query, keyword
   const options = Object.assign({ batchSizeServerSideProcessing: 1000, maxServerSideResults: 50000, fullTextIndex: null, fullTextSuggest: false }, opt) as FirescanOptionsRequired;
   let totalCount = 0;
   
+  const isMultiInequality = isMultipleInequalityFilters(query);
   // get required indexes from query
   const requiredIndexes = analyzeQueryIndexes(query);
   // compare required indexes with available indexes
@@ -220,7 +249,7 @@ export async function firescan(indexes: IndexDefinition[], query: Query, keyword
   }
 
   let resultDocs: DocumentSnapshot[] = [];
-  if(presentIndexes.length === requiredIndexes.length) {
+  if(!isMultiInequality && presentIndexes.length === requiredIndexes.length) {
     
     // all required indexes are present
     if(keywordSearchResults) {

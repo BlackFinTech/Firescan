@@ -132,5 +132,10 @@ describe('firescan on live (test) environment', () => {
       const { results: actions } = await firescan([], db.collection('users').doc(user.docs[0].id).collection('actions'));
       expect(actions.length).toBe(2);
     });
+    // multiple inequality (IN)
+    it('is able to query multiple inequality filters', async () => {
+      const { results: users } = await firescan([], db.collection('users').where('city', 'in', ['NYC', 'LA']).where('name', 'in', ['Tom']));
+      expect(users.length).toBe(1);
+    });
   });
 });
