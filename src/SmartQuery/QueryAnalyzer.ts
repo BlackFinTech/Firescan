@@ -2,7 +2,7 @@
 
 interface IndexField {
   fieldPath: string;
-  order: string;
+  order?: string;
 }
 
 interface IndexDefinition {
