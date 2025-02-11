@@ -44,13 +44,18 @@ npx firescan generate-compound-indexes -c COLLECTION_NAME FIELD1:ASC,FIELD2:DESC
 To use the smart Firestore querying utility, you can use the `firescan` function. Here is an example:
 
 ```javascript
-import { firescan } from 'firescan';
+import { getCollectionFirescan } from 'firescan';
 import * as admin from 'firebase-admin';
 
 const db = admin.firestore();
+const firescanUsers = getCollectionFirescan({
+  firestoreRef: db,
+  firestoreIndexes: [],
+  collectionPath: 'users'
+})
 
 async function queryUsers() {
-  const users = await firescan([], db.collection('users').where('city', '==', 'NYC'));
+  const users = await firescanUsers.run(db.collection('users').where('city', '==', 'NYC'));
   console.log(users.results);
 }
 
@@ -79,15 +84,24 @@ To build a full-text index, you can use the `buildFullTextIndex` function. Use t
 Here is an example:
 
 ```ts
-import { buildFullTextIndex } from 'firescan';
+import { getCollectionFirescan } from 'firescan';
 import * as admin from 'firebase-admin';
 
 const db = admin.firestore();
 const bucket = admin.storage().bucket('your-bucket-name');
+const firescanUsers = getCollectionFirescan({
+  firestoreRef: db,
+  firestoreIndexes: [],
+  collectionPath: 'users',
+  bucketRef: bucket,
+  fullTextIndexConfig: {
+    fields: ['name', 'city'], tokenize: 'strict'
+  }
+})
 
 async function buildIndex() {
-  const index = await buildFullTextIndex(db, bucket, 'users', { fields: ['name', 'city'], tokenize: 'strict' });
-  console.log('Index built successfully');
+  await firescanUsers.buildFullTextIndex();
+  console.log('Index built successfully and is now available to queries - firescanUsers.run(query, keywords)');
 }
 
 buildIndex();
@@ -100,14 +114,11 @@ To load a full-text index from storage, you can use the `loadFullTextIndex` func
 Here is an example how to load the index:
 
 ```ts
-import { loadFullTextIndex } from 'firescan';
-import * as admin from 'firebase-admin';
-
-const bucket = admin.storage().bucket('your-bucket-name');
+// ... same as above, init with getCollectionFirescan
 
 async function loadIndex() {
-  const index = await loadFullTextIndex(bucket, 'users');
-  console.log('Index loaded successfully');
+  await firescanUsers.loadFullTextIndex();
+  console.log('Index loaded successfully and is now available to queries - firescanUsers.run(query, keywords)');
 }
 
 loadIndex();
@@ -118,15 +129,11 @@ loadIndex();
 To update a full-text index with new or modified records, you can use the `updateFullTextIndex` function. This will take the built index and apply queueed updates you've sent via `updateFullTextIndexRecord` Here is an example:
 
 ```ts
-import { updateFullTextIndex } from 'firescan';
-import * as admin from 'firebase-admin';
-
-const db = admin.firestore();
-const bucket = admin.storage().bucket('your-bucket-name');
+// ... same as above, init with getCollectionFirescan
 
 async function updateIndex() {
-  const index = await updateFullTextIndex(db, bucket, 'users');
-  console.log('Index updated successfully');
+  const index = await firescan.updateFullTextIndex();
+  console.log('Index updated successfully and updated index now available to queries - firescanUsers.run(query, keywords)');
 }
 
 updateIndex();
@@ -141,15 +148,12 @@ When you would like a record in full text index deleted (i.e. document has been 
 Here is an example:
 
 ```ts
-import { updateFullTextIndexRecord } from 'firescan';
-import * as admin from 'firebase-admin';
-
-const db = admin.firestore();
+// ... same as above, init with getCollectionFirescan
 
 async function updateRecord() {
   const recordId = 'record-id';
   const recordData = { name: 'John Doe', city: 'NYC' };
-  await updateFullTextIndexRecord(db, 'users', recordId, recordData);
+  await firescanUsers.updateFullTextIndexRecord(recordId, recordData);
   console.log('Record updated successfully');
 }
 
@@ -161,15 +165,10 @@ updateRecord();
 To perform a full-text search, you need to use the `firescan` function with the `fullTextIndex` option. Here is an example:
 
 ```ts
-import { buildFullTextIndex, firescan } from 'firescan';
-import * as admin from 'firebase-admin';
-
-const db = admin.firestore();
-const bucket = admin.storage().bucket('your-bucket-name');
+// ... same as above, init with getCollectionFirescan
 
 async function fullTextSearch() {
-  const index = await buildFullTextIndex(db, bucket, 'users', { fields: ['name', 'city'], tokenize: 'strict' });
-  const users = await firescan([], db.collection('users'), 'John', { fullTextIndex: index });
+  const users = await firescanUsers(db.collection('users'), 'John');
   console.log(users.results);
 }
 
