@@ -187,3 +187,4 @@ fullTextSearch();
 - [ ] support for skipping query count check
 - [ ] support for optimizing dbQuery on partial index queries so that you can specify which fields to filter by first
 - [ ] support for startAt and endAt on partial index queries
+- [ ] clientside sdk (with loading full text index on frontend)
