@@ -1,7 +1,11 @@
 import { analyzeQueryIndexes, IndexDefinition, isMultipleInequalityFilters } from './SmartQuery/QueryAnalyzer';
-import { Query, DocumentSnapshot } from '@google-cloud/firestore';
+import { Query, DocumentSnapshot, Firestore } from '@google-cloud/firestore';
+import { Bucket } from '@google-cloud/storage';
 import { QueryOptions } from '@google-cloud/firestore/build/src/reference/query-options';
-import { FullTextIndex, IndexSearchResult } from './FullTextSearch';
+import { buildFullTextIndex, 
+  updateFullTextIndexRecord,
+  updateFullTextIndex,
+  loadFullTextIndex, FullTextIndex, FullTextIndexConfig, IndexSearchResult } from './FullTextSearch';
 import { parallelExecution } from './util';
 
 interface QueryWithQueryOptions extends Query {
@@ -153,13 +157,13 @@ async function batchQueryProcess(query: Query, limit: number, processor: (doc: a
 };
 
 interface FirescanOptions {
-  fullTextIndex?: null | FullTextIndex,
+  fullTextIndex: FullTextIndex | null;
   fullTextSuggest?: boolean;
   batchSizeServerSideProcessing?: number;
   maxServerSideResults?: number;
 }
 interface FirescanOptionsRequired {
-  fullTextIndex: null | FullTextIndex,
+  fullTextIndex: FullTextIndex | null;
   fullTextSuggest: boolean;
   batchSizeServerSideProcessing: number;
   maxServerSideResults: number;
@@ -243,7 +247,7 @@ export async function firescan(indexes: IndexDefinition[], query: Query, keyword
   if(keywords) {
     const { fullTextIndex } = options;
     if(!fullTextIndex) {
-      throw new Error('Full text search index is required');
+      throw new Error('Full text search index is required to perform keyword search');
     }
     keywordSearchResults = fullTextIndex.search(keywords, { suggest: options.fullTextSuggest });
   }
@@ -329,13 +333,55 @@ export async function firescan(indexes: IndexDefinition[], query: Query, keyword
   };
 }
 
-export {
-  updateFullTextIndexRecord,
-  updateFullTextIndex,
-  buildFullTextIndex,
-  loadFullTextIndex
-} from './FullTextSearch';
+interface ICollectionFirescanConfig {
+  firestoreRef: Firestore;
+  firestoreIndexes: IndexDefinition[];
+  collectionPath: string;
+  bucketRef?: Bucket;
+  fullTextIndexConfig?: FullTextIndexConfig;
+  fullTextSuggest?: boolean;
+  maxServerSideResults?: number;
+  batchSizeServerSideProcessing?: number;
+}
 
-export {
-  IndexDefinition
-} from './SmartQuery/QueryAnalyzer';
+export function getCollectionFirescan(config: ICollectionFirescanConfig) {
+  let fullTextIndex: FullTextIndex | null = null;
+
+  return {
+    run: async function run(query: Query, keywords?: string) {
+      return firescan(config.firestoreIndexes, query, keywords, {
+        fullTextSuggest: config.fullTextSuggest || false,
+        maxServerSideResults: config.maxServerSideResults || 50000,
+        batchSizeServerSideProcessing: config.batchSizeServerSideProcessing || 1000,
+        fullTextIndex: fullTextIndex
+      });
+    },
+    isFullTextLoaded: function isFullTextLoaded(): boolean {
+      return fullTextIndex !== null;
+    },
+    buildFullTextIndex: async function _buildFullTextIndex() {
+      if(!config.bucketRef) {
+        throw new Error('Bucket reference is required to build full text index');
+      }
+      if(!config.fullTextIndexConfig) {
+        throw new Error('Full text index config is required to build full text index');
+      }
+      fullTextIndex = await buildFullTextIndex(config.firestoreRef, config.bucketRef, config.collectionPath, config.fullTextIndexConfig);
+    },
+    loadFullTextIndex: async function _loadFullTextIndex() {
+      if(!config.bucketRef) {
+        throw new Error('Bucket reference is required to load full text index');
+      }
+      fullTextIndex = await loadFullTextIndex(config.bucketRef, config.collectionPath);
+    },
+    updateFullTextIndex: async function _updateFullTextIndex() {
+      if(!config.bucketRef) {
+        throw new Error('Bucket reference is required to update full text index');
+      }
+      fullTextIndex = await updateFullTextIndex(config.firestoreRef, config.bucketRef, config.collectionPath);
+    },
+    updateFullTextIndexRecord: async function _updateFullTextIndexRecord(recordId: string, recordData: object | null) {
+      await updateFullTextIndexRecord(config.firestoreRef, config.collectionPath, recordId, recordData);
+    }
+  }
+}

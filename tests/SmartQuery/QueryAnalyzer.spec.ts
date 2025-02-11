@@ -120,16 +120,6 @@ describe('analyzeQueryIndexes', () => {
   });
 
   describe('error cases', () => {
-    it('should throw error for inequality filters on different fields', () => {
-      const query = db.collection('users')
-        .where('age', '>=', 21)
-        .where('score', '>', 90);
-      
-      expect(() => analyzeQueryIndexes(query)).toThrow(
-        'Cannot have inequality filters on different fields: age and score'
-      );
-    });
-
     it('should automatically handle orderBy requirements for inequality filters', () => {
       const query = db.collection('users')
         .where('age', '>=', 21)

@@ -1,9 +1,8 @@
 // Types for Firestore index definitions
-type OrderDirection = 'ASCENDING' | 'DESCENDING';
 
 interface IndexField {
   fieldPath: string;
-  order: OrderDirection;
+  order: string;
 }
 
 interface IndexDefinition {
