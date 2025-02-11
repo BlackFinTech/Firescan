@@ -50,12 +50,45 @@ async function _fullTextIndexFromJSON(indexDataString: string): Promise<FullText
 // implement below, define how I will configure things, which fields to include for full text and also indexing
 const UPDATES_COLLECTION = 'firescan__full_text_updates';
 
-function _recordDataToSearchableString(recordData: any, config: FullTextIndexConfig): string {
-  const searchableStringParts = [];
-  for(let field of config.fields) {
-    if(recordData[field]) {
-      searchableStringParts.push(recordData[field]);
+/**
+ * Get field values of a record object
+ * @param recordData object
+ * @param field field, in dotted notation with support for arrays, so: contact.firstName will return ['John'] and contacts.firstName will return ['John','Jane']
+ */
+export function getFieldValues(recordData: any, field: string): string[] {
+  let values: string[] = [];
+  const fieldParts = field.split('.');
+  let fieldData = recordData;
+  for(let part of fieldParts) {
+    if(fieldData && fieldData[part]) {
+      if(Array.isArray(fieldData[part])) {
+        for(let item of fieldData[part]) {
+          if(typeof item === 'object') {
+            // object
+            let itemField = fieldParts.slice(fieldParts.indexOf(part) + 1).join('.');
+            values = values.concat(getFieldValues(item, itemField));
+          } else {
+            values.push(String(item));
+          }
+        }
+      } else {
+        fieldData = fieldData[part];
+        if(fieldParts.indexOf(part) === fieldParts.length - 1) {
+          values.push(String(fieldData));
+        }
+      }
+    } else {
+      break;
     }
+  }
+
+  return values.filter((value) => value);
+}
+
+function _recordDataToSearchableString(recordData: any, config: FullTextIndexConfig): string {
+  let searchableStringParts: string[] = [];
+  for(let field of config.fields) {
+    searchableStringParts = searchableStringParts.concat(getFieldValues(recordData, field));
   }
   return searchableStringParts.join(' ');
 }
